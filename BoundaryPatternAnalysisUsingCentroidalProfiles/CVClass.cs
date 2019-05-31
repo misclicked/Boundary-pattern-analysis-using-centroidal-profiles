@@ -256,22 +256,25 @@ namespace CVC
                     Cv2.FindContours(tar, out tarCons, new Mat(), RetrievalModes.External, ContourApproximationModes.ApproxSimple);
                     Cv2.FindContours(tem, out temCons, new Mat(), RetrievalModes.External, ContourApproximationModes.ApproxSimple);
                     double min = double.MaxValue;
+                    double mmin = double.MaxValue;
                     int idx = 0;
                     double[] temBA = BoundaryArrNormal(template);
                     double[] tarBA;
                     int rotation = 0;
+                    int iidx = 0;
                     for(int i=0;i<tarCons.Count();i++)
                     {
-                        /*double val = Cv2.MatchShapes(tarCons[i], temCons[0], ShapeMatchModes.I1);
-                        if (min > val)
+                        double val = Cv2.MatchShapes(tarCons[i], temCons[0], ShapeMatchModes.I1);
+                        if (mmin > val)
                         {
-                            min = val;
-                            idx = i;
-                        }*/
+                            mmin = val;
+                            iidx = i;
+                        }
                         Mat tmp = new Mat(target.Size.Height, target.Size.Width, MatType.CV_8UC1, new Scalar(0));
                         tmp.DrawContours(tmp, tarCons, i, Scalar.White, 1);
                         Mat tmpCropped = new Mat(tmp, Cv2.BoundingRect(tarCons[i]));
                         tarBA = BoundaryArrNormal(tmpCropped.ToBitmap());
+                        
                         double Dmin = double.MaxValue;
                         int Drt = 0;
                         for (int j = 0; j < SIZE; j++)
@@ -282,7 +285,7 @@ namespace CVC
                                 Dj += Math.Pow(temBA[k] - tarBA[(k + j) % SIZE], 2);
                                 if (Dj > Dmin) break;
                             }
-                            if (Dmin > Dj)
+                            if (Dmin >= Dj)
                             {
                                 Dmin = Dj;
                                 Drt = j;
@@ -296,7 +299,6 @@ namespace CVC
                         }
                     }
                     Mat ret = new Mat(target.Size.Height, target.Size.Width, MatType.CV_8UC1, new Scalar(0));
-                    Mat cropped = new Mat(tar, Cv2.BoundingRect(tarCons[idx]));
                     Cv2.DrawContours(ret, tarCons, idx, Scalar.DarkBlue, 1);
                     return ret.ToBitmap();
                 }
@@ -306,44 +308,40 @@ namespace CVC
         #region BoundaryAnalysis
         public double[] BoundaryArrNormal(Bitmap bmp)
         {
-            int[] array = new int[SIZE];
+            List<int>[] array = new List<int>[SIZE];
+            for(int i = 0; i < SIZE; i++)
+            {
+                array[i] = new List<int>();
+            }
             using (Mat mat = BitmapConverter.ToMat(bmp))
             {
                 double centerX = mat.Width / 2;
                 double centerY = mat.Height / 2;
+                double mx = 0;
                 for (int i = 0; i < mat.Height; i++)
                 {
                     for (int j = 0; j < mat.Width; j++)
                     {
                         Vec3b v = mat.Get<Vec3b>(i, j);
-                        if (v.Item0 == 0)
+                        if (v.Item0 != 0 || v.Item1 != 0 || v.Item2 != 0)
                         {
                             int idx = (int)((Math.Atan2(j - centerY, i - centerX) + Math.PI) * 100);
-                            array[idx] = (int)Math.Sqrt(Math.Pow(j - centerY, 2) + Math.Pow(i - centerX, 2));
+                            int value = (int)Math.Sqrt(Math.Pow(j - centerY, 2) + Math.Pow(i - centerX, 2));
+                            array[idx].Add(value);
+                            mx = Math.Max(mx, (double)(value));
+                            
                         }
                     }
                 }
-                double mx = array[0];
                 for (int i = 0; i < SIZE; i++)
                 {
-                    int k = 1;
-                    while (array[i] == 0 && i + k < SIZE)
-                    {
-                        array[i] = array[i + k];
-                        k++;
-                    }
-                    k = 1;
-                    while (array[i] == 0 && i - k >= 0)
-                    {
-                        array[i] = array[i - k];
-                        k++;
-                    }
-                    mx = Math.Max(mx, array[i]);
+                    array[i].Sort();
                 }
                 double[] result = new double[SIZE];
                 for (int i = 0; i < SIZE; i++)
                 {
-                    result[i] = array[i] / mx;
+                    if(array[i].Count>0)
+                        result[i] = array[i].Max()/mx;
                 }
                 return result;
             }
@@ -351,9 +349,9 @@ namespace CVC
         public Series BoundaryAnalysis (Bitmap bmp)
         {
             int[] array = new int[SIZE];
-            Series series = new Series("result", SIZE);
+            Series series = new Series("result");
             series.Color = Color.Blue;
-            series.ChartType = SeriesChartType.Line;
+            series.ChartType = SeriesChartType.FastPoint;
             using (Mat mat = BitmapConverter.ToMat(bmp))
             {
                 double centerX = mat.Width / 2;
@@ -363,28 +361,14 @@ namespace CVC
                     for (int j = 0; j < mat.Width; j++)
                     {
                         Vec3b v = mat.Get<Vec3b>(i, j);
-                        if (v.Item0 == 0)
+                        Console.WriteLine(v.Item0+" "+v.Item1+" "+v.Item2);
+                        if (v.Item0!=0||v.Item1!=0||v.Item2!=0)
                         {
                             int idx = (int)((Math.Atan2(j - centerY, i - centerX) + Math.PI) * 100);
+                            series.Points.AddXY(idx, (int)Math.Sqrt(Math.Pow(j - centerY, 2) + Math.Pow(i - centerX, 2)));
                             array[idx] = (int)Math.Sqrt(Math.Pow(j - centerY, 2) + Math.Pow(i - centerX, 2));
                         }
                     }
-                }
-                for (int i = 0; i < SIZE; i++)
-                {
-                    int k = 1;
-                    while (array[i] == 0&&i+k< SIZE)
-                    {
-                        array[i] = array[i + k];
-                        k++;
-                    }
-                    k = 1;
-                    while (array[i] == 0 && i - k >= 0)
-                    {
-                        array[i] = array[i - k];
-                        k++;
-                    }
-                    series.Points.AddXY(i, array[i]);
                 }
                 return series;
             }
